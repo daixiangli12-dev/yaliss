@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>网盘资源搜索</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f7fa;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #2c3e50;
+    }
+    .search-box {
+      display: flex;
+      max-width: 600px;
+      margin: 0 auto 20px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px 0 0 4px;
+      font-size: 16px;
+    }
+    button {
+      padding: 12px 20px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 0 4px 4px 0;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #2980b9;
+    }
+
+    .results {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .item {
+      background: white;
+      padding: 16px;
+      margin-bottom: 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+.link {
+  text-decoration: underline;
+  display: inline-block;
+  margin-top: 4px;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.main-link, .backup-link { color: #3498db; }   /* 统一蓝色 */
+.pwd-link { color: #e67e22; }                 /* 橙色突出提取码 */
+
+.link:hover {
+  text-decoration: none;
+  color: #1a5f9d;
+}
+
+    /* 弹窗遮罩 */
+    #auth-modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+    }
+    .modal-content {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 350px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      margin: 12px 0;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    .quark-link {
+      display: block;
+      margin-top: 15px;
+      color: #e74c3c;
+      text-decoration: underline;
+      font-size: 14px;
+    }
+    .error {
+      color: #e74c3c;
+      font-size: 14px;
+      margin-top: 8px;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>网盘资源搜索</h1>
+  <div class="search-box">
+    <input type="text" id="keyword" placeholder="输入资源名称..." autocomplete="off" />
+    <button onclick="search()">搜索</button>
+  </div>
+  <div id="results" class="results"></div>
+
+  <!-- 访问码验证弹窗 -->
+  <div id="auth-modal">
+    <div class="modal-content">
+      <h3>请输入访问码</h3>
+      <p>请先转存下方网盘获取访问码：</p>
+      <a href="https://pan.quark.cn/s/87ab9a737028" target="_blank" class="quark-link">👉 夸克网盘（点此转存）</a>
+      <input type="password" id="accessCode" placeholder="访问码" />
+      <button onclick="checkAccessCode()">确定</button>
+      <div id="auth-error" class="error"></div>
+    </div>
+  </div>
+
+  <script>
+// 全局存储今日配置
+let DAILY_CONFIG = null;
+
+// 页面加载时获取今日访问码和夸克链接
+async function loadDailyConfig() {
+  try {
+    const res = await fetch('https://yali-search-api.daixiangli12.workers.dev/api/today-code');
+    if (!res.ok) throw new Error('获取配置失败');
+    DAILY_CONFIG = await res.json();
+
+    // 更新弹窗中的夸克链接
+    document.querySelector('.quark-link').href = DAILY_CONFIG.quark_link;
+  } catch (err) {
+    console.error('加载今日配置失败:', err);
+    document.getElementById('auth-error').textContent = '初始化失败，请刷新页面';
+  }
+}
+
+// 页面加载时自动执行
+loadDailyConfig();
+    // === 初始化：检查是否已授权 ===
+    if (localStorage.getItem('yali_authorized') === 'true') {
+      document.getElementById('auth-modal').style.display = 'none';
+    }
+
+    // === 回车搜索 ===
+    document.getElementById('keyword').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        search();
+      }
+    });
+
+    // === 搜索函数 ===
+    async function search() {
+if (localStorage.getItem('yali_authorized') !== 'true' || !DAILY_CONFIG) {
+  alert('请先输入访问码！');
+  return;
+}
+
+      const keyword = document.getElementById('keyword').value.trim();
+      if (!keyword) {
+        document.getElementById('results').innerHTML = '<p>请输入关键词</p>';
+        return;
+      }
+
+      try {
+        const url = `https://yali-search-api.daixiangli12.workers.dev/api/search?name=${encodeURIComponent(keyword)}&secret=xK9mP2qR`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        const data = await res.json();
+        const resultsEl = document.getElementById('results');
+        resultsEl.innerHTML = '';
+
+        if (data.length === 0) {
+          resultsEl.innerHTML = '<p>未找到相关资源</p>';
+          return;
+        }
+
+        data.forEach(item => {
+  const div = document.createElement('div');
+  div.className = 'item';
+
+  // === 1. 动态生成 main_link：从 baidu_link, yd_link, xl_link 随机选 ===
+  const mainCandidates = [];
+  if (item.baidu_link && item.baidu_link.trim()) mainCandidates.push(item.baidu_link);
+  if (item.yd_link && item.yd_link.trim()) mainCandidates.push(item.yd_link);
+  if (item.xl_link && item.xl_link.trim()) mainCandidates.push(item.xl_link);
+
+  let mainLink = '';
+  if (mainCandidates.length > 0) {
+    mainLink = mainCandidates[Math.floor(Math.random() * mainCandidates.length)];
+  }
+
+  // === 2. 动态生成 backup_password：从 wkm_link, quarkm_link, ktm_link 随机选 ===
+  const pwdCandidates = [];
+  if (item.wkm_link && item.wkm_link.trim()) pwdCandidates.push(item.wkm_link);
+  if (item.quarkm_link && item.quarkm_link.trim()) pwdCandidates.push(item.quarkm_link);
+  if (item.ktm_link && item.ktm_link.trim()) pwdCandidates.push(item.ktm_link);
+
+  let backupPasswordLink = '';
+  if (pwdCandidates.length > 0) {
+    backupPasswordLink = pwdCandidates[Math.floor(Math.random() * pwdCandidates.length)];
+  }
+
+  // === 3. 构建 HTML ===
+  let html = `<strong>${item.name}</strong><br/>`;
+
+  if (mainLink) {
+    html += `<div><a href="${mainLink}" target="_blank" class="link main-link">🔗 主链接</a></div>`;
+  }
+  if (item.backup_link && item.backup_link.trim()) {
+    html += `<div><a href="${item.backup_link}" target="_blank" class="link backup-link">🔗 备用链接</a></div>`;
+  }
+  if (backupPasswordLink) {
+    html += `<div><a href="${backupPasswordLink}" target="_blank" class="link pwd-link">🔑 提取码</a></div>`;
+  }
+
+  if (!mainLink && !item.backup_link?.trim() && !backupPasswordLink) {
+    html += '<div>❌ 无有效链接</div>';
+  }
+
+  div.innerHTML = html;
+  resultsEl.appendChild(div);
+});
+      } catch (err) {
+        console.error(err);
+        document.getElementById('results').innerHTML = `<p style="color:red;">搜索失败：${err.message}</p>`;
+      }
+    }
+
+    // === 验证访问码 ===
+function checkAccessCode() {
+  const errorEl = document.getElementById('auth-error');
+  errorEl.textContent = ''; // 清空旧错误
+
+  if (!DAILY_CONFIG) {
+    errorEl.textContent = '配置加载中，请稍后再试';
+    return;
+  }
+
+  const code = document.getElementById('accessCode').value.trim();
+  if (code === DAILY_CONFIG.code) {
+    localStorage.setItem('yali_authorized', 'true');
+    document.getElementById('auth-modal').style.display = 'none';
+  } else {
+    errorEl.textContent = '访问码错误，请重试';
+  }
+}
+  </script>
+</body>
+</html>
