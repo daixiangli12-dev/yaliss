@@ -181,7 +181,7 @@ if (localStorage.getItem('yali_authorized') !== 'true' || !DAILY_CONFIG) {
       }
 
       try {
-        const url = `https://yali-search-api.daixiangli12.workers.dev/api/search?name=${encodeURIComponent(keyword)}&secret=xK9mP2qR`;
+        const url = `https://yali-search-api.daixiangli12.workers.dev/api/search?name=${encodeURIComponent(keyword)}&code=${DAILY_CONFIG.code}`;
         const res = await fetch(url);
         if (!res.ok) {
           throw new Error(await res.text());
@@ -267,4 +267,5 @@ function checkAccessCode() {
 }
   </script>
 </body>
+
 </html>
